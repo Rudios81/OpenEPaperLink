@@ -84,7 +84,7 @@ jobs:
           cp .pio/build/ESP32_S3_16_8_LILYGO_T3/partitions.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3/partitions.bin
           cp .pio/build/ESP32_S3_16_8_LILYGO_T3/littlefs.bin /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3/littlefs.bin
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink/ESP32_S3_16_8_LILYGO_T3
-          esptool.py --chip esp32-s2 merge_bin -o merged-firmware.bin --flash_mode dio --flash_freq 80m --flash_size 4MB 0x1000 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin 0x290000 littlefs.bin
+          esptool.py --chip esp32-s3 merge_bin -o merged-firmware.bin --flash_mode dio --flash_freq 80m --flash_size 16MB 0x0000 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin 0x00910000 littlefs.bin
           cd /home/runner/work/OpenEPaperLink/OpenEPaperLink
           cp ESP32_S3_16_8_LILYGO_T3/firmware.bin espbinaries/ESP32_S3_16_8_LILYGO_T3.bin
           cp ESP32_S3_16_8_LILYGO_T3/merged-firmware.bin espbinaries/ESP32_S3_16_8_LILYGO_T3_full.bin
