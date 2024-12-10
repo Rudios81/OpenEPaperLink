@@ -222,6 +222,15 @@ void drawNew(const uint8_t mac[8], tagRecord *&taginfo) {
     } else {
         imageParams.zlib = 0;
     }
+#ifdef SAVE_SPACE
+    imageParams.g5 = 0;
+#else
+    if (hwdata.g5 != 0 && taginfo->tagSoftwareVersion >= hwdata.g5) {
+        imageParams.g5 = 1;
+    } else {
+        imageParams.g5 = 0;
+    }
+#endif
 
     imageParams.lut = EPD_LUT_NO_REPEATS;
     if (taginfo->lut == 2) imageParams.lut = EPD_LUT_FAST_NO_REDS;
@@ -277,9 +286,18 @@ void drawNew(const uint8_t mac[8], tagRecord *&taginfo) {
                     imageParams.lut = EPD_LUT_DEFAULT;
                 }
 
-                if (imageParams.zlib) {
+                if (imageParams.bpp == 3) {
+                    imageParams.dataType = DATATYPE_IMG_RAW_3BPP;
+                    Serial.println("datatype: DATATYPE_IMG_RAW_3BPP");
+                } else if (imageParams.bpp == 4) {
+                    imageParams.dataType = DATATYPE_IMG_RAW_4BPP;
+                    Serial.println("datatype: DATATYPE_IMG_RAW_4BPP");
+                } else if (imageParams.zlib) {
                     imageParams.dataType = DATATYPE_IMG_ZLIB;
                     Serial.println("datatype: DATATYPE_IMG_ZLIB");
+                } else if (imageParams.g5) {
+                    imageParams.dataType = DATATYPE_IMG_G5;
+                    Serial.println("datatype: DATATYPE_IMG_G5");
                 } else if (imageParams.hasRed) {
                     imageParams.dataType = DATATYPE_IMG_RAW_2BPP;
                     Serial.println("datatype: DATATYPE_IMG_RAW_2BPP");
@@ -437,13 +455,6 @@ void drawNew(const uint8_t mac[8], tagRecord *&taginfo) {
             taginfo->nextupdate = 3216153600;
             prepareNFCReq(mac, cfgobj["url"].as<const char *>());
             break;
-
-        case 15:  // send gray LUT
-
-            taginfo->nextupdate = 3216153600;
-            prepareLUTreq(mac, cfgobj["bytes"]);
-            taginfo->hasCustomLUT = true;
-            break;
 #endif
 
 #ifdef CONTENT_BUIENRADAR
@@ -557,9 +568,18 @@ bool updateTagImage(String &filename, const uint8_t *dst, uint16_t nextCheckin, 
             imageParams.lut = EPD_LUT_DEFAULT;
         }
 
-        if (imageParams.zlib) {
+        if (imageParams.bpp == 3) {
+            imageParams.dataType = DATATYPE_IMG_RAW_3BPP;
+            Serial.println("datatype: DATATYPE_IMG_RAW_3BPP");
+        } else if (imageParams.bpp == 4) {
+            imageParams.dataType = DATATYPE_IMG_RAW_4BPP;
+            Serial.println("datatype: DATATYPE_IMG_RAW_4BPP");
+        } else if (imageParams.zlib) {
             imageParams.dataType = DATATYPE_IMG_ZLIB;
             Serial.println("datatype: DATATYPE_IMG_ZLIB");
+        } else if (imageParams.g5) {
+            imageParams.dataType = DATATYPE_IMG_G5;
+            Serial.println("datatype: DATATYPE_IMG_G5");
         } else if (imageParams.hasRed) {
             imageParams.dataType = DATATYPE_IMG_RAW_2BPP;
             Serial.println("datatype: DATATYPE_IMG_RAW_2BPP");
@@ -990,19 +1010,19 @@ void drawForecast(String &filename, JsonObject &cfgobj, const tagRecord *taginfo
         }
 
         if (loc["rain"]) {
-           if (cfgobj["units"] == "0") {
-              const int8_t rain = round(daily["precipitation_sum"][dag].as<double>());
-              if (rain > 0) {
-                  drawString(spr, String(rain) + "mm", dag * column1 + loc["rain"][0].as<int>(), loc["rain"][1], day[2], TC_DATUM, (rain > 10 ? imageParams.highlightColor : TFT_BLACK));
-              }
-           } else {
-              double fRain = daily["precipitation_sum"][dag].as<double>();
-              fRain = round(fRain*100.0) / 100.0;
-              if (fRain > 0.0) {
-                 // inch, display if > .01 inches
-                  drawString(spr, String(fRain) + "in", dag * column1 + loc["rain"][0].as<int>(), loc["rain"][1], day[2], TC_DATUM, (fRain > 0.5 ? imageParams.highlightColor : TFT_BLACK));
-              }
-           }
+            if (cfgobj["units"] == "0") {
+                const int8_t rain = round(daily["precipitation_sum"][dag].as<double>());
+                if (rain > 0) {
+                    drawString(spr, String(rain) + "mm", dag * column1 + loc["rain"][0].as<int>(), loc["rain"][1], day[2], TC_DATUM, (rain > 10 ? imageParams.highlightColor : TFT_BLACK));
+                }
+            } else {
+                double fRain = daily["precipitation_sum"][dag].as<double>();
+                fRain = round(fRain * 100.0) / 100.0;
+                if (fRain > 0.0) {
+                    // inch, display if > .01 inches
+                    drawString(spr, String(fRain) + "in", dag * column1 + loc["rain"][0].as<int>(), loc["rain"][1], day[2], TC_DATUM, (fRain > 0.5 ? imageParams.highlightColor : TFT_BLACK));
+                }
+            }
         }
 
         drawString(spr, String(tmin) + " ", dag * column1 + day[0].as<int>(), day[4], day[2], TR_DATUM, (tmin < 0 ? imageParams.highlightColor : TFT_BLACK));
@@ -1211,7 +1231,7 @@ bool getCalFeed(String &filename, JsonObject &cfgobj, tagRecord *&taginfo, imgPa
         int temp = imageParams.height;
         imageParams.height = imageParams.width;
         imageParams.width = temp;
-        imageParams.rotatebuffer = 1 - (imageParams.rotatebuffer%2);
+        imageParams.rotatebuffer = 1 - (imageParams.rotatebuffer % 2);
         initSprite(spr, imageParams.width, imageParams.height, imageParams);
     } else {
         initSprite(spr, imageParams.width, imageParams.height, imageParams);
@@ -1439,18 +1459,32 @@ bool getCalFeed(String &filename, JsonObject &cfgobj, tagRecord *&taginfo, imgPa
 
 #ifdef CONTENT_DAYAHEAD
 uint16_t getPercentileColor(const double *prices, int numPrices, double price, HwType hwdata) {
-    double percentile = 100.0;
-    int colorIndex = 3;
-    const char *colors[] = {"black", "darkgray", "pink", "red"};
-    if (hwdata.highlightColor == 3) {
-        // yellow
-        colors[2] = "brown";
-        colors[3] = "yellow";
-    }
-    const int numColors = sizeof(colors) / sizeof(colors[0]);
+    const char *colorsDefault[] = {"black", "darkgray", "pink", "red"};
+    const double boundariesDefault[] = {40.0, 80.0, 90.0};
 
-    const double boundaries[] = {40.0, 80.0, 90.0};
-    const int numBoundaries = sizeof(boundaries) / sizeof(boundaries[0]);
+    const char *colors3bpp[] = {"blue", "green", "yellow", "orange", "red"};
+    const double boundaries3bpp[] = {20.0, 50.0, 70.0, 90.0};
+
+    const char **colors;
+    const double *boundaries;
+    int numColors, numBoundaries;
+
+    if (hwdata.bpp == 3 || hwdata.bpp == 4) {
+        colors = colors3bpp;
+        boundaries = boundaries3bpp;
+        numColors = sizeof(colors3bpp) / sizeof(colors3bpp[0]);
+        numBoundaries = sizeof(boundaries3bpp) / sizeof(boundaries3bpp[0]);
+    } else {
+        colors = colorsDefault;
+        boundaries = boundariesDefault;
+        numColors = sizeof(colorsDefault) / sizeof(colorsDefault[0]);
+        numBoundaries = sizeof(boundariesDefault) / sizeof(boundariesDefault[0]);
+        if (hwdata.highlightColor == 3) {
+            colors[2] = "brown";
+            colors[3] = "yellow";
+        }
+    }
+    int colorIndex = numColors - 1;
 
     for (int i = 0; i < numBoundaries; i++) {
         if (price < prices[int(numPrices * boundaries[i] / 100.0)]) {
@@ -1622,7 +1656,7 @@ bool getDayAheadFeed(String &filename, JsonObject &cfgobj, tagRecord *&taginfo, 
             spr.fillTriangle(barX + i * barwidth, 15 + arrowY,
                              barX + i * barwidth + barwidth - 1, 15 + arrowY,
                              barX + i * barwidth + (barwidth - 1) / 2, 15 + barwidth + arrowY, imageParams.highlightColor);
-            spr.drawLine(barX + i * barwidth + (barwidth - 1) / 2, 20 + barwidth + arrowY, barX + i * barwidth + (barwidth - 1) / 2, spr.height(), getColor("pink"));
+            spr.drawLine(barX + i * barwidth + (barwidth - 1) / 2, 20 + barwidth + arrowY, barX + i * barwidth + (barwidth - 1) / 2, spr.height(), TFT_BLACK);
             pricenow = price;
         }
     }
@@ -1809,14 +1843,18 @@ void drawTimestamp(String &filename, JsonObject &cfgobj, tagRecord *&taginfo, im
         drawString(spr, "Well done!", spr.width() / 2, 90, "calibrib30.vlw", TC_DATUM, TFT_BLACK);
         spr2buffer(spr, filename2, imageParams);
 
-        if (imageParams.zlib) imageParams.dataType = DATATYPE_IMG_ZLIB;
+        if (imageParams.zlib) {
+            imageParams.dataType = DATATYPE_IMG_ZLIB;
+        } else if (imageParams.g5) {
+            imageParams.dataType = DATATYPE_IMG_G5;
+        }
 
         struct imageDataTypeArgStruct arg = {0};
         arg.preloadImage = 1;
         arg.specialType = 17;  // button 2
         arg.lut = 0;
 
-        prepareDataAvail(filename2, imageParams.dataType, *((uint8_t *)&arg), taginfo->mac, 5 | 0x8000 );
+        prepareDataAvail(filename2, imageParams.dataType, *((uint8_t *)&arg), taginfo->mac, 5 | 0x8000);
 
         spr.fillRect(0, 0, spr.width(), spr.height(), TFT_WHITE);
 
@@ -1828,7 +1866,7 @@ void drawTimestamp(String &filename, JsonObject &cfgobj, tagRecord *&taginfo, im
         arg.preloadImage = 1;
         arg.specialType = 16;  // button 1
         arg.lut = 0;
-        prepareDataAvail(filename2, imageParams.dataType, *((uint8_t *)&arg), taginfo->mac, 5 | 0x8000 );
+        prepareDataAvail(filename2, imageParams.dataType, *((uint8_t *)&arg), taginfo->mac, 5 | 0x8000);
 
         cfgobj["#init"] = "1";
     }
@@ -2165,7 +2203,7 @@ void rotateBuffer(uint8_t rotation, uint8_t &currentOrientation, TFT_eSprite &sp
             initSprite(spr, sprCpy.width(), sprCpy.height(), imageParams);
             sprCpy.pushToSprite(&spr, 0, 0);
             sprCpy.deleteSprite();
-            imageParams.rotatebuffer = 1 - (imageParams.rotatebuffer%2);
+            imageParams.rotatebuffer = 1 - (imageParams.rotatebuffer % 2);
         }
         currentOrientation = rotation;
     }
@@ -2217,6 +2255,9 @@ uint16_t getColor(const String &color) {
     if (color == "5" || color == "darkgray") return TFT_DARKGREY;
     if (color == "6" || color == "pink") return 0xFBCF;
     if (color == "7" || color == "brown") return 0x8400;
+    if (color == "8" || color == "green") return TFT_GREEN;
+    if (color == "9" || color == "blue") return TFT_BLUE;
+    if (color == "10" || color == "orange") return 0xFBE0;
     uint16_t r, g, b;
     if (color.length() == 7 && color[0] == '#' &&
         sscanf(color.c_str(), "#%2hx%2hx%2hx", &r, &g, &b) == 3) {
@@ -2314,20 +2355,6 @@ void prepareNFCReq(const uint8_t *dst, const char *url) {
     data[len] = 0xFE;
     len = 1 + len;
     prepareDataAvail(data, len, DATATYPE_NFC_RAW_CONTENT, dst);
-}
-
-void prepareLUTreq(const uint8_t *dst, const String &input) {
-    constexpr const char *delimiters = ", \t";
-    constexpr const int maxValues = 76;
-    uint8_t waveform[maxValues];
-    char *ptr = strtok(const_cast<char *>(input.c_str()), delimiters);
-    int i = 0;
-    while (ptr != nullptr && i < maxValues) {
-        waveform[i++] = static_cast<uint8_t>(strtol(ptr, nullptr, 16));
-        ptr = strtok(nullptr, delimiters);
-    }
-    const size_t waveformLen = sizeof(waveform);
-    prepareDataAvail(waveform, waveformLen, DATATYPE_CUSTOM_LUT_OTA, dst);
 }
 #endif
 

@@ -1207,6 +1207,16 @@ function drawCanvas(buffer, canvas, hwtype, tagmac, doRotate) {
 	if (data.length > 0 && tagTypes[hwtype].zlib > 0 && $('#tag' + tagmac).dataset.ver >= tagTypes[hwtype].zlib) {
 		data = processZlib(data);
 	}
+	if (data.length > 0 && tagTypes[hwtype].g5 > 0 && $('#tag' + tagmac).dataset.ver >= tagTypes[hwtype].g5) {
+		const headerSize = data[0];
+		let bufw = (data[2] << 8) | data[1];
+		let bufh = (data[4] << 8) | data[3];
+		if ((bufw == tagTypes[hwtype].width || bufw == tagTypes[hwtype].height) && (bufh == tagTypes[hwtype].width || bufh == tagTypes[hwtype].height) && (data[5] <= 3)) {
+			// valid header for g5 compression
+			if (data[5] == 2) bufh *= 2;
+			data = processG5(data.subarray(headerSize), bufw, bufh);
+		}
+	}
 
 	[canvas.width, canvas.height] = [tagTypes[hwtype].width, tagTypes[hwtype].height] || [0, 0];
 	if (tagTypes[hwtype].rotatebuffer % 2) [canvas.width, canvas.height] = [canvas.height, canvas.width];
@@ -1241,6 +1251,28 @@ function drawCanvas(buffer, canvas, hwtype, tagmac, doRotate) {
 			imageData.data[i * 4 + 1] = is16Bit ? ((rgb >> 5) & 0x3F) << 2 : (((rgb >> 2) & 0x07) << 5) * 1.13;
 			imageData.data[i * 4 + 2] = is16Bit ? (rgb & 0x1F) << 3 : ((rgb & 0x03) << 6) * 1.3;
 			imageData.data[i * 4 + 3] = 255;
+		}
+
+	} else if (tagTypes[hwtype].bpp == 3) {
+		const colorTable = tagTypes[hwtype].colortable;
+
+		let pixelIndex = 0;
+		for (let i = 0; i < data.length; i += 3) {
+			for (let j = 0; j < 8; j++) {
+				let bitPos = j * 3;
+				let bytePos = Math.floor(bitPos / 8);
+				let bitOffset = bitPos % 8;
+				let pixelValue = (data[i + bytePos] >> (5 - bitOffset)) & 0x07;
+				if (bitOffset > 5) {
+					pixelValue = ((data[i + bytePos] & (0xFF >> bitOffset)) << (bitOffset - 5)) |
+						(data[i + bytePos + 1] >> (13 - bitOffset));
+				}
+				imageData.data[pixelIndex * 4] = colorTable[pixelValue][0];
+				imageData.data[pixelIndex * 4 + 1] = colorTable[pixelValue][1];
+				imageData.data[pixelIndex * 4 + 2] = colorTable[pixelValue][2];
+				imageData.data[pixelIndex * 4 + 3] = 255;
+				pixelIndex++;
+			}
 		}
 
 	} else {
@@ -1499,6 +1531,7 @@ async function getTagtype(hwtype) {
 			contentids: Object.values(jsonData.contentids ?? []),
 			options: Object.values(jsonData.options ?? []),
 			zlib: parseInt(jsonData.zlib_compression || "0", 16),
+			g5: parseInt(jsonData.g5_compression || "0", 16),
 			shortlut: parseInt(jsonData.shortlut),
 			busy: false,
 			usetemplate: parseInt(jsonData.usetemplate || "0", 10)
